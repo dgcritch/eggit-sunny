@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Eggit Sunny</title>
+    <style>
+        /* This centers the game window on your screen */
+        body { 
+            background: #222; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            color: white;
+            font-family: sans-serif;
+        }
+        /* This is the actual game board */
+        canvas { 
+            background: #000; 
+            border: 2px solid #fff; 
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Keyboard state
+        let keys = {};
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Platform properties
+        let platforms = [
+            { x: 150, y: 450, width: 100, height: 15 }
+        ];
+
+        // Egg properties
+        let egg = {
+            x: 200,
+            y: 100,
+            radius: 15,
+            dy: 2,
+            jumpPower: -7.5, // We can easily change this value later with a "power-up"
+            moveSpeed: 3
+        };
+
+        const gravity = 0.15;
+        const bounce = -7.5;
+
+        function drawEgg() {
+            ctx.beginPath();
+            ctx.arc(egg.x, egg.y, egg.radius, 0, Math.PI * 2);
+            ctx.fillStyle = "yellow";
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function update() {
+            // 1. Clear the screen
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw platforms
+            ctx.fillStyle = "#00FF00"; // A bright green
+            platforms.forEach(plat => {
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+            });
+
+            // 2. Draw the egg
+            drawEgg();
+
+            // Handle horizontal movement
+            if (keys['ArrowLeft']) {
+                egg.x -= 3;
+            }
+            if (keys['ArrowRight']) {
+                egg.x += 3;
+            }
+
+            // 3. Apply physics
+            egg.y += egg.dy;
+            egg.dy += gravity;
+
+            // Platform collision
+            platforms.forEach(plat => {
+                if (egg.dy > 0 && // Only check if falling downward
+                    egg.y + egg.radius > plat.y && 
+                    egg.y + egg.radius < plat.y + plat.height &&
+                    egg.x > plat.x && 
+                    egg.x < plat.x + plat.width) {
+                        
+                    egg.y = plat.y - egg.radius; // Snap to top of platform
+                    egg.dy = bounce;            // Trigger the bounce
+                }
+            });
+
+            // 4. Simple floor bounce
+            if (egg.y + egg.radius > canvas.height) {
+                egg.y = canvas.height - egg.radius;
+                egg.dy = bounce;
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // Start the game loop
+        update();
+    </script>
+</body>
+</html>
