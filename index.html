@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Eggit Sunny</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         /* This centers the game window on your screen */
         body { 
@@ -16,97 +17,282 @@
         }
         /* This is the actual game board */
         canvas { 
-            background: #000; 
-            border: 2px solid #fff; 
+            background: #0d210d; 
+            border: 2px solid #fff;
+            max-width: 100%;  /* Ensures it shrinks on small screens */
+            max-height: 90vh; /* Leaves a little room at the top/bottom */
+            touch-action: none; /* Prevents the phone from scrolling while you play */
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <canvas id="gameCanvas" width="800" height="1200"></canvas>
 
+    <script src="levels.js"></script>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const worldHeight = 5000; // Total height of Level 1
 
         // Keyboard state
         let keys = {};
-
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-        });
 
         window.addEventListener('keyup', (e) => {
             keys[e.code] = false;
         });
 
-        // Platform properties
-        let platforms = [
-            { x: 150, y: 450, width: 100, height: 15 }
-        ];
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            // Add this part
+            if (e.code === 'KeyR' && gameWon) {
+                location.reload();
+            }
+        });
+
+        // Mobile Touch Support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevents the browser from scrolling
+            isTouching = true;
+            handleTouch(e);
+            if (gameWon) location.reload();
+        }, {passive: false});
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleTouch(e);
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', () => {
+            isTouching = false;
+        }, {passive: false});
+
+        function handleTouch(e) {
+            let rect = canvas.getBoundingClientRect();
+            let touchX = e.touches[0].clientX - rect.left;
+            
+            // Convert screen pixels to game coordinates
+            let scaleX = canvas.width / rect.width;
+            egg.x = touchX * scaleX;
+        }
 
         // Egg properties
         let egg = {
-            x: 200,
-            y: 100,
+            x: 400,
+            y: 4900,
             radius: 15,
-            dy: 2,
+            dy: 0,
             jumpPower: -7.5, // We can easily change this value later with a "power-up"
             moveSpeed: 3
         };
 
+        let gameWon = false;
+
+        let isTouching = false;
+
+        // Static strings of code/runes for the background
+        let digitalRunes = [];
+        const symbols = ["01", "00", "{ }", "=>", "f()", "∑", "Ω", "∆", "∫", "<?>"];
+
+        for (let i = 0; i < 25; i++) {
+            digitalRunes.push({
+                x: Math.random() * 800,
+                y: Math.random() * 5000,
+                text: symbols[Math.floor(Math.random() * symbols.length)],
+                opacity: 0.1 + Math.random() * 0.2 // Some are more faded than others
+            });
+        }
+
         const gravity = 0.15;
         const bounce = -7.5;
+        let cameraY = 0;
 
         function drawEgg() {
+            ctx.save();
+            ctx.translate(egg.x, egg.y - cameraY);
             ctx.beginPath();
-            ctx.arc(egg.x, egg.y, egg.radius, 0, Math.PI * 2);
+            
+            // Starting at the top center of the egg
+            ctx.moveTo(0, -egg.radius * 1.2);
+
+            // Right side of the egg (bulging more at the bottom)
+            ctx.bezierCurveTo(
+                egg.radius * 0.8, -egg.radius * 1.2, // Top-right curve
+                egg.radius * 1.1, egg.radius * 1.0,  // Bottom-right "bulge"
+                0, egg.radius * 1.1                  // Bottom center
+            );
+
+            // Left side of the egg (mirroring the bulge)
+            ctx.bezierCurveTo(
+                -egg.radius * 1.1, egg.radius * 1.0, // Bottom-left "bulge"
+                -egg.radius * 0.8, -egg.radius * 1.2, // Top-left curve
+                0, -egg.radius * 1.2                 // Back to top center
+            );
+
             ctx.fillStyle = "yellow";
             ctx.fill();
-            ctx.closePath();
+            
+            // Add a small shine/highlight for depth
+            ctx.beginPath();
+            ctx.ellipse(-4, -6, 3, 5, Math.PI / 4, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.fill();
+
+            ctx.restore();
         }
 
         function update() {
             // 1. Clear the screen
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw platforms
-            ctx.fillStyle = "#00FF00"; // A bright green
-            platforms.forEach(plat => {
-                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+            // 2. DRAW BACKGROUND GRID
+            ctx.save();
+            ctx.strokeStyle = "#1a3a1a"; // Lighter green
+            ctx.lineWidth = 1;
+            
+            // Draw Vertical Lines
+            for (let x = 0; x <= canvas.width; x += 40) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+
+            // Draw Horizontal Lines (Scrolling with Parallax)
+            let gridOffset = (-cameraY * 0.5) % 40;
+            for (let y = gridOffset; y <= canvas.height; y += 40) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+
+            // 3. DRAW ATMOSPHERIC BITS (The new part)
+            ctx.fillStyle = "rgba(0, 255, 0, 0.15)"; 
+            for (let i = 0; i < 15; i++) {
+                let x = (i * 12345) % canvas.width;
+                let y = ((i * 98765) - cameraY * 0.8) % canvas.height; 
+                ctx.fillRect(x, y, 4, 4);
+            }
+            // INSERT DIGITAL RUNES HERE
+            ctx.font = "14px monospace";
+            digitalRunes.forEach(rune => {
+                // Parallax scroll at 0.7 speed
+                let drawY = (rune.y - cameraY * 0.7) % 5000;
+                
+                // Wrap around logic to keep them within the 800px view
+                if (drawY < 0) drawY += 800;
+                if (drawY > 800) drawY -= 800;
+
+                ctx.fillStyle = `rgba(0, 255, 0, ${rune.opacity})`;
+                ctx.fillText(rune.text, rune.x, drawY);
             });
+            
+            ctx.restore();
 
-            // 2. Draw the egg
-            drawEgg();
-
+            // 2. CALCULATE EVERYTHING FIRST
             // Handle horizontal movement
-            if (keys['ArrowLeft']) {
-                egg.x -= 3;
-            }
-            if (keys['ArrowRight']) {
-                egg.x += 3;
+            if (!isTouching) {
+                if (keys['ArrowLeft']) egg.x -= egg.moveSpeed;
+                if (keys['ArrowRight']) egg.x += egg.moveSpeed;
             }
 
-            // 3. Apply physics
+            // Boundaries
+            if (egg.x - egg.radius < 0) egg.x = egg.radius;
+            if (egg.x + egg.radius > canvas.width) egg.x = canvas.width - egg.radius;
+
+            // Apply physics
             egg.y += egg.dy;
             egg.dy += gravity;
 
-            // Platform collision
+            // Collisions
             platforms.forEach(plat => {
-                if (egg.dy > 0 && // Only check if falling downward
-                    egg.y + egg.radius > plat.y && 
-                    egg.y + egg.radius < plat.y + plat.height &&
-                    egg.x > plat.x && 
-                    egg.x < plat.x + plat.width) {
-                        
-                    egg.y = plat.y - egg.radius; // Snap to top of platform
-                    egg.dy = bounce;            // Trigger the bounce
+                if (egg.dy > 0 && egg.y + egg.radius > plat.y && egg.y + egg.radius < plat.y + plat.height && egg.x > plat.x && egg.x < plat.x + plat.width) {
+                    
+                    egg.y = plat.y - egg.radius;
+                    egg.dy = bounce;
+
+                    // NEW: If the platform we just bounced on is the goal, show the message!
+                    if (plat.isGoal) {
+                        gameWon = true; // Instead of alert, we flip the "Won" switch
+                    }
                 }
             });
 
-            // 4. Simple floor bounce
-            if (egg.y + egg.radius > canvas.height) {
-                egg.y = canvas.height - egg.radius;
+            // Updated Floor bounce for a large world
+            if (egg.y + egg.radius > worldHeight) {
+                egg.y = worldHeight - egg.radius;
                 egg.dy = bounce;
+            }
+
+            // 3. UPDATE CAMERA
+            let targetY = egg.y - 400; // Aim to keep egg in the middle
+            let lerp = 0.1; 
+            cameraY += (targetY - cameraY) * lerp;
+
+            // FIX: Clamp the camera so it doesn't show "under" the floor
+            // The furthest the camera can go down is worldHeight minus the window height
+            let maxCameraY = worldHeight - canvas.height; 
+
+            if (cameraY > maxCameraY) {
+                cameraY = maxCameraY;
+            }
+
+            // Optional: Keep the existing "top" clamp if you don't want to see above the ceiling
+            if (cameraY < -100) { // Adjust -100 based on your highest platform
+                // cameraY = -100; 
+            }
+
+            // 4. DRAW EVERYTHING LAST (Subtracting cameraY)
+            platforms.forEach(plat => {
+                ctx.save(); // Start the "style safety" bracket
+
+                // 1. Set the Glow (Shadow)
+                ctx.shadowBlur = 15;
+                if (plat.isGoal) {
+                    ctx.shadowColor = "gold";
+                    ctx.fillStyle = "gold";
+                } else {
+                    ctx.shadowColor = "#00FF00";
+                    ctx.fillStyle = "#00FF00";
+                }
+
+                // 2. Draw the main platform body
+                ctx.fillRect(plat.x, plat.y - cameraY, plat.width, plat.height);
+
+                // 3. Add the "Circuit Line" (The white inner border)
+                ctx.shadowBlur = 0; // Turn off glow for the thin line so it stays sharp
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(plat.x + 4, (plat.y - cameraY) + 4, plat.width - 8, plat.height - 8);
+
+                ctx.restore(); // End the "style safety" bracket
+            });
+
+            // Call the fixed draw function
+            drawEgg();
+
+            // --- INSERT SUCCESS GRAPHIC HERE ---
+            if (gameWon) {
+                // 1. Dim the background
+                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 2. Draw the glowing box
+                ctx.save();
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = "gold";
+                ctx.fillStyle = "#0d210d";
+                ctx.strokeStyle = "gold";
+                ctx.lineWidth = 5;
+                
+                let boxW = Math.min(canvas.width * 0.8, 600); // Scales for mobile but caps at 600
+                let boxH = 250;
+                ctx.fillRect(canvas.width/2 - boxW/2, canvas.height/2 - boxH/2, boxW, boxH);
+                ctx.strokeRect(canvas.width/2 - boxW/2, canvas.height/2 - boxH/2, boxW, boxH);
+
+                // 3. Add the Text
+                ctx.fillStyle = "gold";
+                ctx.font = "bold 40px monospace";
+                ctx.textAlign = "center";
+                ctx.fillText("Well done little egg...", canvas.width/2, canvas.height/2 - 10);
+                
+                ctx.font = "20px monospace";
+                ctx.fillText("Press 'R' to Reboot", canvas.width/2, canvas.height/2 + 80);
+                ctx.restore();
             }
 
             requestAnimationFrame(update);
