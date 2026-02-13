@@ -3,58 +3,142 @@
 <head>
     <title>Eggit Sunny</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- IMPORT RETRO FONTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    
     <style>
-        /* This centers the game window on your screen */
         body { 
-            background: #222; 
+            background: #111; 
             display: flex; 
             justify-content: center; 
             align-items: center; 
             height: 100vh; 
             margin: 0; 
             color: white;
-            font-family: sans-serif;
+            font-family: 'VT323', monospace;
+            overflow: hidden;
         }
-        /* This is the actual game board */
         canvas { 
-            background: #0d210d; 
-            border: 2px solid #fff;
-            max-width: 100%;  /* Ensures it shrinks on small screens */
-            max-height: 90vh; /* Leaves a little room at the top/bottom */
-            touch-action: none; /* Prevents the phone from scrolling while you play */
+            background: #051105; 
+            border: 4px solid #333; 
+            max-width: 100%; 
+            max-height: 95vh; 
+            touch-action: none; 
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            transition: background-color 1s ease;
+            image-rendering: pixelated; 
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas" width="800" height="1200"></canvas>
 
+    <!-- Load the designer file -->
     <script src="levels.js"></script>
+    
+    <!-- Game Engine -->
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const worldHeight = 5000; // Total height of Level 1
+        const worldHeight = 5000; 
 
-        // Keyboard state
+        // Global State
+        let currentLevel = 1;
         let keys = {};
+        let gameWon = false;
+        let isTouching = false;
+
+        // Initialize Level
+        // Uses window.levelLibrary from levels.js
+        let currentLevelData = window.levelLibrary[currentLevel] || window.levelLibrary[1];
+        let platforms = currentLevelData.platforms;
+        let currentTheme = window.themeLibrary[currentLevelData.theme || "matrix"];
+
+        let egg = {
+            x: 400, y: 4900, radius: 15, dy: 0, jumpPower: -7.5, moveSpeed: 6 
+        };
+
+        const gravity = 0.15; 
+        const bounce = -9.0;  
+        let cameraY = worldHeight - canvas.height;
+
+        canvas.style.background = currentTheme.bg;
+
+        // --- PARTICLE SYSTEM ---
+        let backgroundParticles = [];
+        const digitalSymbols = ["01", "00", "{ }", "=>", "f()", "∑", "Ω", "∆", "∫", "<?>"];
+        
+        function initParticles(type) {
+            backgroundParticles = [];
+            const count = 40;
+            for (let i = 0; i < count; i++) {
+                if (type === "digital") {
+                    backgroundParticles.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * worldHeight,
+                        text: digitalSymbols[Math.floor(Math.random() * digitalSymbols.length)],
+                        speed: 0.05 + Math.random() * 0.1,
+                        opacity: 0.1 + Math.random() * 0.2,
+                        type: "text"
+                    });
+                } else if (type === "ash") {
+                    // Ash falls DOWN slowly
+                    backgroundParticles.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * worldHeight,
+                        size: 1 + Math.random() * 3,
+                        speed: 0.5 + Math.random() * 1.0, 
+                        opacity: 0.2 + Math.random() * 0.3,
+                        type: "ash"
+                    });
+                }
+            }
+        }
+        
+        initParticles(currentTheme.particle);
+
+        // --- LEVEL SWITCHING ---
+        function startNextLevel() {
+            currentLevel++;
+            
+            if (window.levelLibrary[currentLevel]) {
+                currentLevelData = window.levelLibrary[currentLevel];
+            } else {
+                currentLevel = 1; 
+                currentLevelData = window.levelLibrary[1];
+            }
+
+            platforms = currentLevelData.platforms;
+            currentTheme = window.themeLibrary[currentLevelData.theme];
+            canvas.style.background = currentTheme.bg; 
+            
+            initParticles(currentTheme.particle);
+
+            gameWon = false;
+            egg.y = 4900;
+            egg.x = 400;
+            egg.dy = 0;
+            cameraY = worldHeight - canvas.height;
+        }
+
+        // --- INPUTS ---
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'KeyR' && gameWon) startNextLevel();
+            if (e.code === 'KeyN') startNextLevel(); // Cheat key
+        });
 
         window.addEventListener('keyup', (e) => {
             keys[e.code] = false;
         });
 
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            // Add this part
-            if (e.code === 'KeyR' && gameWon) {
-                location.reload();
-            }
-        });
-
-        // Mobile Touch Support
         canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // Prevents the browser from scrolling
+            e.preventDefault();
             isTouching = true;
+            if (gameWon) startNextLevel();
             handleTouch(e);
-            if (gameWon) location.reload();
         }, {passive: false});
 
         canvas.addEventListener('touchmove', (e) => {
@@ -62,243 +146,259 @@
             handleTouch(e);
         }, {passive: false});
 
-        canvas.addEventListener('touchend', () => {
-            isTouching = false;
-        }, {passive: false});
+        canvas.addEventListener('touchend', () => isTouching = false);
 
         function handleTouch(e) {
             let rect = canvas.getBoundingClientRect();
             let touchX = e.touches[0].clientX - rect.left;
-            
-            // Convert screen pixels to game coordinates
             let scaleX = canvas.width / rect.width;
             egg.x = touchX * scaleX;
         }
 
-        // Egg properties
-        let egg = {
-            x: 400,
-            y: 4900,
-            radius: 15,
-            dy: 0,
-            jumpPower: -7.5, // We can easily change this value later with a "power-up"
-            moveSpeed: 3
-        };
+        // RENDERER LOGIC
+        function drawPlatform(plat) {
+            let style = currentTheme.renderStyle; 
+            
+            ctx.save();
+            
+            if (style === "neon") {
+                // --- DIGITAL/NEON STYLE ---
+                ctx.shadowBlur = plat.isGoal ? 25 : 10;
+                let pColor = plat.isGoal ? "gold" : currentTheme.platformGlow;
+                let pBody = plat.isGoal ? "gold" : currentTheme.platformBody;
 
-        let gameWon = false;
+                ctx.shadowColor = pColor;
+                ctx.fillStyle = pBody;
+                ctx.strokeStyle = pColor;
+                ctx.lineWidth = 2;
+                
+                ctx.fillRect(plat.x, plat.y - cameraY, plat.width, plat.height);
+                ctx.strokeRect(plat.x, plat.y - cameraY, plat.width, plat.height);
+                
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+                ctx.strokeRect(plat.x + 6, (plat.y - cameraY) + 4, plat.width - 12, 2);
+            } 
+            else if (style === "industrial") {
+                // --- INDUSTRIAL/FOUNDRY STYLE ---
+                ctx.fillStyle = currentTheme.platformBody;
+                ctx.fillRect(plat.x, plat.y - cameraY, plat.width, plat.height);
+                
+                // Border
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(plat.x, plat.y - cameraY, plat.width, plat.height);
 
-        let isTouching = false;
+                // Texture: Stripes
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(plat.x, plat.y - cameraY, plat.width, plat.height);
+                ctx.clip(); 
+                
+                ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+                ctx.lineWidth = 4;
+                if (!plat.isGoal) {
+                    for(let k = 0; k < plat.width + plat.height; k+=20) {
+                        ctx.beginPath();
+                        ctx.moveTo(plat.x + k, plat.y - cameraY - 10);
+                        ctx.lineTo(plat.x + k - 20, plat.y - cameraY + plat.height + 10);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
 
-        // Static strings of code/runes for the background
-        let digitalRunes = [];
-        const symbols = ["01", "00", "{ }", "=>", "f()", "∑", "Ω", "∆", "∫", "<?>"];
+                // Rivets
+                ctx.fillStyle = "#555";
+                ctx.beginPath();
+                ctx.arc(plat.x + 5, plat.y - cameraY + 5, 2, 0, Math.PI*2); // Top L
+                ctx.arc(plat.x + plat.width - 5, plat.y - cameraY + 5, 2, 0, Math.PI*2); // Top R
+                ctx.arc(plat.x + 5, plat.y - cameraY + plat.height - 5, 2, 0, Math.PI*2); // Bot L
+                ctx.arc(plat.x + plat.width - 5, plat.y - cameraY + plat.height - 5, 2, 0, Math.PI*2); // Bot R
+                ctx.fill();
 
-        for (let i = 0; i < 25; i++) {
-            digitalRunes.push({
-                x: Math.random() * 800,
-                y: Math.random() * 5000,
-                text: symbols[Math.floor(Math.random() * symbols.length)],
-                opacity: 0.1 + Math.random() * 0.2 // Some are more faded than others
-            });
+                if (plat.isGoal) {
+                    ctx.fillStyle = "gold";
+                    ctx.fillRect(plat.x, plat.y - cameraY, plat.width, plat.height);
+                    ctx.strokeRect(plat.x, plat.y - cameraY, plat.width, plat.height);
+                }
+            }
+
+            ctx.restore();
         }
-
-        const gravity = 0.15;
-        const bounce = -7.5;
-        let cameraY = 0;
 
         function drawEgg() {
             ctx.save();
             ctx.translate(egg.x, egg.y - cameraY);
-            ctx.beginPath();
             
-            // Starting at the top center of the egg
+            ctx.beginPath();
             ctx.moveTo(0, -egg.radius * 1.2);
-
-            // Right side of the egg (bulging more at the bottom)
-            ctx.bezierCurveTo(
-                egg.radius * 0.8, -egg.radius * 1.2, // Top-right curve
-                egg.radius * 1.1, egg.radius * 1.0,  // Bottom-right "bulge"
-                0, egg.radius * 1.1                  // Bottom center
-            );
-
-            // Left side of the egg (mirroring the bulge)
-            ctx.bezierCurveTo(
-                -egg.radius * 1.1, egg.radius * 1.0, // Bottom-left "bulge"
-                -egg.radius * 0.8, -egg.radius * 1.2, // Top-left curve
-                0, -egg.radius * 1.2                 // Back to top center
-            );
-
-            ctx.fillStyle = "yellow";
+            ctx.bezierCurveTo(egg.radius * 0.8, -egg.radius * 1.2, egg.radius * 1.1, egg.radius * 1.0, 0, egg.radius * 1.1);
+            ctx.bezierCurveTo(-egg.radius * 1.1, egg.radius * 1.0, -egg.radius * 0.8, -egg.radius * 1.2, 0, -egg.radius * 1.2);
+            ctx.fillStyle = "#FFD700";
             ctx.fill();
             
-            // Add a small shine/highlight for depth
             ctx.beginPath();
             ctx.ellipse(-4, -6, 3, 5, Math.PI / 4, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
             ctx.fill();
+            ctx.restore();
+        }
 
+        function drawHUD() {
+            ctx.save();
+            ctx.font = "20px 'Press Start 2P', monospace"; 
+            ctx.fillStyle = currentTheme.uiColor;
+            ctx.textAlign = "left";
+            ctx.shadowBlur = 0; 
+            
+            // Level Counter
+            ctx.fillText(`LEVEL ${currentLevel}`, 20, 40);
+            
+            // Zone Name
+            ctx.font = "16px 'VT323', monospace";
+            ctx.fillText(`ZONE: ${currentTheme.zoneName}`, 20, 65);
             ctx.restore();
         }
 
         function update() {
-            // 1. Clear the screen
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 2. DRAW BACKGROUND GRID
+            // 1. Background Layers
             ctx.save();
-            ctx.strokeStyle = "#1a3a1a"; // Lighter green
-            ctx.lineWidth = 1;
             
-            // Draw Vertical Lines
-            for (let x = 0; x <= canvas.width; x += 40) {
-                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-            }
-
-            // Draw Horizontal Lines (Scrolling with Parallax)
-            let gridOffset = (-cameraY * 0.5) % 40;
-            for (let y = gridOffset; y <= canvas.height; y += 40) {
-                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-            }
-
-            // 3. DRAW ATMOSPHERIC BITS (The new part)
-            ctx.fillStyle = "rgba(0, 255, 0, 0.15)"; 
-            for (let i = 0; i < 15; i++) {
-                let x = (i * 12345) % canvas.width;
-                let y = ((i * 98765) - cameraY * 0.8) % canvas.height; 
-                ctx.fillRect(x, y, 4, 4);
-            }
-            // INSERT DIGITAL RUNES HERE
-            ctx.font = "14px monospace";
-            digitalRunes.forEach(rune => {
-                // Parallax scroll at 0.7 speed
-                let drawY = (rune.y - cameraY * 0.7) % 5000;
+            // --- DRAW BACKGROUND PATTERN ---
+            if (currentTheme.bgType === "grid") {
+                // TYPE A: The Digital Grid
+                ctx.strokeStyle = currentTheme.grid; 
+                ctx.lineWidth = 1;
+                let gridOffset = (-cameraY * 0.4) % 80;
+                for (let y = gridOffset; y <= canvas.height; y += 80) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                }
+                for (let x = 0; x <= canvas.width; x += 80) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+                }
+            } else if (currentTheme.bgType === "industrial") {
+                // TYPE B: The Plated Wall (No Grid)
+                ctx.strokeStyle = currentTheme.grid; // Dark rusty lines
+                ctx.lineWidth = 2;
+                let plateHeight = 200;
+                let plateOffset = (-cameraY * 0.4) % plateHeight;
                 
-                // Wrap around logic to keep them within the 800px view
-                if (drawY < 0) drawY += 800;
-                if (drawY > 800) drawY -= 800;
-
-                ctx.fillStyle = `rgba(0, 255, 0, ${rune.opacity})`;
-                ctx.fillText(rune.text, rune.x, drawY);
-            });
-            
-            ctx.restore();
-
-            // 2. CALCULATE EVERYTHING FIRST
-            // Handle horizontal movement
-            if (!isTouching) {
-                if (keys['ArrowLeft']) egg.x -= egg.moveSpeed;
-                if (keys['ArrowRight']) egg.x += egg.moveSpeed;
+                // Draw horizontal plate seams only
+                for (let y = plateOffset; y <= canvas.height; y += plateHeight) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                    // Add bolts along the seam
+                    ctx.fillStyle = "#111";
+                    for (let x = 20; x < canvas.width; x+=100) {
+                        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
+                    }
+                }
             }
 
-            // Boundaries
-            if (egg.x - egg.radius < 0) egg.x = egg.radius;
-            if (egg.x + egg.radius > canvas.width) egg.x = canvas.width - egg.radius;
-
-            // Apply physics
-            egg.y += egg.dy;
-            egg.dy += gravity;
-
-            // Collisions
-            platforms.forEach(plat => {
-                if (egg.dy > 0 && egg.y + egg.radius > plat.y && egg.y + egg.radius < plat.y + plat.height && egg.x > plat.x && egg.x < plat.x + plat.width) {
+            // Particles
+            backgroundParticles.forEach(p => {
+                if (p.type === "text") {
+                    let drawY = (p.y - cameraY * 0.6) % 1500;
+                    if (drawY < 0) drawY += 1500;
+                    if (drawY < canvas.height) {
+                        ctx.font = "12px monospace";
+                        ctx.fillStyle = `rgba(${currentTheme.runeColor}, ${p.opacity})`;
+                        ctx.fillText(p.text, p.x, drawY);
+                    }
+                } else if (p.type === "ash") {
+                    // Ash falls DOWN slowly
+                    let drawY = (p.y + (Date.now() * 0.05 * p.speed) - cameraY * 0.2) % 1500;
                     
-                    egg.y = plat.y - egg.radius;
-                    egg.dy = bounce;
+                    // Wrap logic
+                    while (drawY < 0) drawY += 1500;
+                    while (drawY > 1500) drawY -= 1500;
 
-                    // NEW: If the platform we just bounced on is the goal, show the message!
-                    if (plat.isGoal) {
-                        gameWon = true; // Instead of alert, we flip the "Won" switch
+                    if (drawY < canvas.height) {
+                        ctx.beginPath();
+                        ctx.arc(p.x, drawY, p.size, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(${currentTheme.runeColor}, ${p.opacity})`;
+                        ctx.fill();
                     }
                 }
             });
+            ctx.restore();
 
-            // Updated Floor bounce for a large world
+            // 2. Physics
+            if (!gameWon) {
+                if (!isTouching) {
+                    if (keys['ArrowLeft']) egg.x -= egg.moveSpeed;
+                    if (keys['ArrowRight']) egg.x += egg.moveSpeed;
+                }
+                egg.dy += gravity;
+                egg.y += egg.dy;
+            }
+
+            if (egg.x < egg.radius) egg.x = egg.radius;
+            if (egg.x > canvas.width - egg.radius) egg.x = canvas.width - egg.radius;
+
             if (egg.y + egg.radius > worldHeight) {
                 egg.y = worldHeight - egg.radius;
                 egg.dy = bounce;
             }
 
-            // 3. UPDATE CAMERA
-            let targetY = egg.y - 400; // Aim to keep egg in the middle
-            let lerp = 0.1; 
-            cameraY += (targetY - cameraY) * lerp;
-
-            // FIX: Clamp the camera so it doesn't show "under" the floor
-            // The furthest the camera can go down is worldHeight minus the window height
-            let maxCameraY = worldHeight - canvas.height; 
-
-            if (cameraY > maxCameraY) {
-                cameraY = maxCameraY;
-            }
-
-            // Optional: Keep the existing "top" clamp if you don't want to see above the ceiling
-            if (cameraY < -100) { // Adjust -100 based on your highest platform
-                // cameraY = -100; 
-            }
-
-            // 4. DRAW EVERYTHING LAST (Subtracting cameraY)
             platforms.forEach(plat => {
-                ctx.save(); // Start the "style safety" bracket
-
-                // 1. Set the Glow (Shadow)
-                ctx.shadowBlur = 15;
-                if (plat.isGoal) {
-                    ctx.shadowColor = "gold";
-                    ctx.fillStyle = "gold";
-                } else {
-                    ctx.shadowColor = "#00FF00";
-                    ctx.fillStyle = "#00FF00";
+                if (egg.dy > 0 && egg.y + egg.radius > plat.y && egg.y + egg.radius < plat.y + plat.height && egg.x > plat.x && egg.x < plat.x + plat.width) {
+                    egg.y = plat.y - egg.radius;
+                    egg.dy = bounce;
+                    if (plat.isGoal) gameWon = true;
                 }
-
-                // 2. Draw the main platform body
-                ctx.fillRect(plat.x, plat.y - cameraY, plat.width, plat.height);
-
-                // 3. Add the "Circuit Line" (The white inner border)
-                ctx.shadowBlur = 0; // Turn off glow for the thin line so it stays sharp
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-                ctx.lineWidth = 2;
-                ctx.strokeRect(plat.x + 4, (plat.y - cameraY) + 4, plat.width - 8, plat.height - 8);
-
-                ctx.restore(); // End the "style safety" bracket
             });
 
-            // Call the fixed draw function
+            let targetY = egg.y - (canvas.height * 0.7);
+            cameraY += (targetY - cameraY) * 0.08;
+            if (cameraY > worldHeight - canvas.height) cameraY = worldHeight - canvas.height;
+            if (cameraY < -200) cameraY = -200;
+
+            // 3. Draw Game Objects
+            platforms.forEach(plat => {
+                drawPlatform(plat);
+            });
+
             drawEgg();
+            drawHUD(); 
 
-            // --- INSERT SUCCESS GRAPHIC HERE ---
+            // 4. Success UI
             if (gameWon) {
-                // 1. Dim the background
-                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // 2. Draw the glowing box
-                ctx.save();
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = "gold";
-                ctx.fillStyle = "#0d210d";
-                ctx.strokeStyle = "gold";
-                ctx.lineWidth = 5;
                 
-                let boxW = Math.min(canvas.width * 0.8, 600); // Scales for mobile but caps at 600
-                let boxH = 250;
+                let boxW = Math.min(canvas.width * 0.85, 500);
+                let boxH = 280;
+                
+                ctx.save();
+                ctx.shadowBlur = 0; 
+                ctx.shadowColor = "transparent";
+                ctx.fillStyle = "#222"; 
+                ctx.strokeStyle = currentTheme.uiColor; 
+                ctx.lineWidth = 4;
+                
                 ctx.fillRect(canvas.width/2 - boxW/2, canvas.height/2 - boxH/2, boxW, boxH);
                 ctx.strokeRect(canvas.width/2 - boxW/2, canvas.height/2 - boxH/2, boxW, boxH);
 
-                // 3. Add the Text
-                ctx.fillStyle = "gold";
-                ctx.font = "bold 40px monospace";
+                ctx.fillStyle = currentTheme.uiColor; 
                 ctx.textAlign = "center";
-                ctx.fillText("Well done little egg...", canvas.width/2, canvas.height/2 - 10);
                 
-                ctx.font = "20px monospace";
-                ctx.fillText("Press 'R' to Reboot", canvas.width/2, canvas.height/2 + 80);
+                ctx.font = "24px 'Press Start 2P', monospace"; 
+                ctx.fillText(`LEVEL ${currentLevel} CLEAR`, canvas.width/2, canvas.height/2 - 30);
+                
+                ctx.font = "24px 'VT323', monospace";
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillText("Well done little egg...", canvas.width/2, canvas.height/2 + 20);
+                
+                ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+                ctx.fillText("Tap or Press 'R' for Next Stage", canvas.width/2, canvas.height/2 + 80);
                 ctx.restore();
             }
 
             requestAnimationFrame(update);
         }
 
-        // Start the game loop
         update();
     </script>
 </body>
